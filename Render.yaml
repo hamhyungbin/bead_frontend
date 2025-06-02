@@ -1,0 +1,23 @@
+services:
+  - type: web # Frontend (React) - can be Static Site if build output is purely static
+    name: my-dashboard-frontend
+    plan: free
+    env: node # or static if using static site type
+    region: oregon # Or your preferred region
+    buildCommand: "cd frontend && npm install && npm run build"
+    # If using Static Site type on Render:
+    # staticPublishPath: "./frontend/dist"
+    # If using Web Service type for frontend (e.g. for SSR or complex routing):
+    startCommand: "cd frontend && npx serve -s dist -p $PORT" # Example using 'serve'
+    envVars:
+      - key: VITE_API_URL # Ensure your React app uses this for backend URL
+        value: https://${MY_DASHBOARD_BACKEND_RENDER_EXTERNAL_URL} # Render provides this automatically
+        # Or use the backend service's internal URL if preferred: http://my-dashboard-backend:5000
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - frontend/**
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html # For SPA routing with React Router
