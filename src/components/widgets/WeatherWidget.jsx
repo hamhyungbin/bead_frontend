@@ -67,7 +67,7 @@ function WeatherWidget({ initialCity, onCityChange }) {
             Weather: {weatherData.weather?.[0]?.description}
             {weatherData.weather?.[0]?.icon && (
               <img
-                src={`http://openweathermap.org/img/wn/${weatherData.weather[0].icon}.png`}
+                src={`https://openweathermap.org/img/wn/${weatherData.weather[0].icon}.png`}
                 alt={weatherData.weather[0].description}
                 className="inline-block ml-1 w-6 h-6"
               />
