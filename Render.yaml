@@ -21,3 +21,11 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html # For SPA routing with React Router
+
+databases:
+  - name: my-dashboard-db
+    plan: free
+    databaseName: mydashboarddb # Choose a name
+    user: mydashboarduser # Choose a user
+    region: oregon
+    ipAllowList: [] # Allow all IPs, or configure as needed
