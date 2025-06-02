@@ -1,14 +1,15 @@
 // src/pages/DashboardPage.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Responsive, WidthProvider } from 'react-grid-layout';
-import 'react-grid-layout/css/styles.css'; // react-grid-layout 기본 스타일
-import 'react-resizable/css/styles.css';  // react-resizable 기본 스타일
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import { v4 as uuidv4 } from 'uuid';
-import useAuthStore from '../store/authStore'; // authStore 경로 확인
-import api from '../services/api';             // api 서비스 경로 확인
-import WidgetWrapper from '../components/WidgetWrapper'; // WidgetWrapper 경로 확인
-import NotesWidget from '../components/widgets/NotesWidget'; // NotesWidget 경로 확인
-import WeatherWidget from '../components/widgets/WeatherWidget'; // WeatherWidget 경로 확인
+import useAuthStore from '../store/authStore';
+import api from '../services/api';
+import WidgetWrapper from '../components/WidgetWrapper';
+import NotesWidget from '../components/widgets/NotesWidget';
+import WeatherWidget from '../components/widgets/WeatherWidget';
+import ClockWidget from '../components/widgets/ClockWidget'; // 시계 위젯 import
 import {
   Button,
   Box,
@@ -26,31 +27,32 @@ import {
   useTheme,
   useMediaQuery
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add'; //
+import AddIcon from '@mui/icons-material/Add';
 import MenuIcon from '@mui/icons-material/Menu';
 import LogoutIcon from '@mui/icons-material/Logout';
+import AccessTimeIcon from '@mui/icons-material/AccessTime'; // 시계 아이콘
 
-const ResponsiveGridLayout = WidthProvider(Responsive); //
+const ResponsiveGridLayout = WidthProvider(Responsive);
+
+// ResponsiveGridLayout에 전달될 breakpoints와 cols를 상수로 정의
+const RGL_BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }; //
+const RGL_COLS = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }; //
 
 export default function DashboardPage() {
   const logout = useAuthStore((state) => state.logout); //
   const [widgets, setWidgets] = useState([]); //
-  const [layouts, setLayouts] = useState({}); // 레이아웃 상태 (예: {lg: [], md: [], ...})
+  const [layouts, setLayouts] = useState({}); //
   const [isLoading, setIsLoading] = useState(false); //
   const [error, setError] = useState(null); //
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const theme = useTheme();
-  // MUI의 useMediaQuery를 사용하여 현재 화면 크기가 'sm' (small) 이상인지 확인합니다.
-  // sm 브레이크포인트는 일반적으로 600px입니다.
   const isDesktop = useMediaQuery(theme.breakpoints.up('sm'));
-
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
-  // 위젯 데이터 및 레이아웃 불러오기
   const fetchWidgetsAndLayouts = useCallback(async () => { //
     setIsLoading(true); //
     setError(null); //
@@ -59,18 +61,14 @@ export default function DashboardPage() {
       const fetchedWidgets = response.data; //
       setWidgets(fetchedWidgets); //
 
-      // 백엔드에서 레이아웃 정보가 breakpoint별로 오지 않는 경우, 'lg'만 설정하거나
-      // 모든 breakpoint에 동일한 레이아웃을 복사해줄 수 있습니다.
-      // react-grid-layout은 layouts 객체에 모든 정의된 breakpoint에 대한 키를 기대합니다.
-      const newLayouts = {};
-      const breakpoints = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }; // ResponsiveGridLayout에 전달된 breakpoints와 동일하게 사용
-      const backendLayout = fetchedWidgets.map(w => w.layout);
-
-      Object.keys(breakpoints).forEach(bp => {
-        newLayouts[bp] = backendLayout.map(item => ({ ...item })); // 각 breakpoint에 레이아웃 복사
+      const newLayoutsObj = {};
+      Object.keys(RGL_BREAKPOINTS).forEach(bp => {
+        newLayoutsObj[bp] = fetchedWidgets.map(w => ({
+          ...(w.layout || { x: 0, y: 0, w: (w.type === 'clock' ? 2 : (w.type === 'weather' ? 3 : 4)), h: (w.type === 'clock' ? 1 : (w.type === 'weather' ? 2 : 3)) }), // 기본값 제공
+          i: w.id.toString(), // 'i'는 문자열이어야 합니다.
+        }));
       });
-      
-      setLayouts(newLayouts); //
+      setLayouts(newLayoutsObj); //
 
     } catch (err) {
       setError(err.response?.data?.msg || 'Failed to fetch widgets'); //
@@ -83,106 +81,94 @@ export default function DashboardPage() {
     fetchWidgetsAndLayouts(); //
   }, [fetchWidgetsAndLayouts]); //
 
-  // 레이아웃 변경 시 호출되는 함수
   const onLayoutChange = useCallback(async (currentLayout, allLayouts) => {
-    // currentLayout: 현재 활성 breakpoint의 레이아웃 배열
-    // allLayouts: 모든 breakpoint의 레이아웃 객체 {lg: [...], md: [...]}
-    setLayouts(allLayouts); // UI 즉시 업데이트
+    setLayouts(allLayouts); // RGL의 모든 breakpoint 레이아웃으로 UI 상태 업데이트
 
-    // 변경된 레이아웃 정보 백엔드에 저장
-    // currentLayout (현재 breakpoint의 layout)을 기준으로 업데이트합니다.
-    // react-grid-layout은 사용자가 드래그/리사이즈 시 현재 breakpoint의 layout만 변경합니다.
-    // 서버에는 변경된 위젯의 레이아웃 정보(i, x, y, w, h)만 업데이트합니다.
-    
-    // 어떤 breakpoint의 레이아웃이 변경되었는지 확인 (예: 'lg', 'md' 등)
-    // `currentLayout` 파라미터는 현재 활성화된 breakpoint의 레이아웃을 나타냅니다.
-    // `allLayouts`는 모든 breakpoint에 대한 레이아웃을 포함하므로,
-    // `currentLayout`의 각 아이템을 `allLayouts`의 해당 breakpoint에서 찾아 비교하거나
-    // 혹은 `currentLayout`을 직접 순회하며 변경된 위젯의 정보를 업데이트할 수 있습니다.
-    // 여기서는 currentLayout을 사용합니다.
+    // 'lg' breakpoint의 레이아웃을 기준으로 서버에 저장하고 canonical widget.layout 업데이트
+    const lgLayoutToPersist = allLayouts.lg || currentLayout;
 
-    for (const item of currentLayout) {
-      const widgetToUpdate = widgets.find(w => w.id === item.i); //
-      if (widgetToUpdate) {
-        // 실제 레이아웃 값 변경 여부 확인 (최적화)
-        const prevLayout = widgetToUpdate.layout;
+    for (const item of lgLayoutToPersist) {
+      const widget = widgets.find(w => w.id === item.i); //
+      if (widget) {
+        const currentCanonicalLayout = widget.layout || {};
+        // 실제 레이아웃 변경 여부 확인 (x, y, w, h만 비교)
         if (
-          prevLayout.x !== item.x ||
-          prevLayout.y !== item.y ||
-          prevLayout.w !== item.w ||
-          prevLayout.h !== item.h
+          currentCanonicalLayout.x !== item.x ||
+          currentCanonicalLayout.y !== item.y ||
+          currentCanonicalLayout.w !== item.w ||
+          currentCanonicalLayout.h !== item.h
         ) {
           try {
-            // 서버에는 위젯 ID와 새로운 layout 객체 (x,y,w,h 포함)를 보냅니다.
-            await api.put(`/api/widgets/${item.i}`, { layout: { ...item } }); //
+            // 서버에는 'lg' 기준 레이아웃 정보 업데이트
+            await api.put(`/api/widgets/${item.i}`, { layout: { ...item, i: item.i.toString() } }); //
             
-            // 로컬 widgets 상태의 layout도 업데이트
+            // 로컬 widgets 상태의 layout도 'lg' 기준으로 업데이트
             setWidgets(prevWidgets => //
-              prevWidgets.map(w => (w.id === item.i ? { ...w, layout: { ...item } } : w)) //
+              prevWidgets.map(w =>
+                w.id === item.i ? { ...w, layout: { ...item, i: item.i.toString() } } : w
+              ) //
             );
           } catch (err) {
             console.error("Failed to update widget layout:", err); //
-            // 오류 발생 시 사용자에게 알림 또는 레이아웃 롤백 고려
+            setError('Failed to save layout changes. Please try again.');
           }
         }
       }
     }
-  }, [widgets, api, setLayouts]); // 의존성 배열 수정: api, setLayouts 추가
+  }, [widgets, api]); // setLayouts는 useCallback 의존성에 필요 없음
 
-  // 새 위젯 추가 함수
   const addWidget = async (type) => { //
     const newWidgetId = uuidv4(); //
 
-    // 현재 'lg' 브레이크포인트의 레이아웃 가져오기 (또는 가장 넓은 breakpoint)
-    const currentLgLayout = layouts?.lg || []; //
-    let newY = 0; //
-    if (currentLgLayout.length > 0) { //
-      newY = Math.max(...currentLgLayout.map(item => item.y + item.h), 0); //
-    }
-    
-    // layouts.cols?.lg 가 없을 수 있으므로 안전하게 접근 (기본값 12)
-    const lgCols = (layouts && layouts.cols && layouts.cols.lg) ? layouts.cols.lg : 12;
+    const defaultWidths = { notes: 4, weather: 3, clock: 2 };
+    const defaultHeights = { notes: 3, weather: 2, clock: 1 };
+    const minWidths = { notes: 3, weather: 2, clock: 2 };
+    const minHeights = { notes: 2, weather: 2, clock: 1 };
 
     const newLayoutItemBase = { //
-      i: newWidgetId, //
-      x: (currentLgLayout.filter(item => item.y === newY).length * (type === 'weather' ? 3 : 4)) % lgCols, //
-      y: newY, //
-      w: type === 'weather' ? 3 : 4, //
-      h: type === 'weather' ? 2 : 3, //
-      minW: type === 'weather' ? 2 : 3, //
-      minH: 2, //
+      i: newWidgetId.toString(),
+      x: (layouts.lg?.filter(item => item.y === 0).reduce((acc, item) => acc + item.w, 0) % RGL_COLS.lg) || 0, // 가장 윗줄 오른쪽으로 추가 시도
+      y: 0, // Infinity, // 새 위젯을 가장 아래에 배치 (react-grid-layout이 y값 조정)
+      w: defaultWidths[type] || 3, //
+      h: defaultHeights[type] || 2, //
+      minW: minWidths[type] || 2, //
+      minH: minHeights[type] || 1, //
     };
 
-    const defaultConfig = type === 'notes' ? { content: '' } : { city: '' }; // WeatherWidget 초기 도시를 빈 문자열로 하여 자동 감지 유도
+    const defaultConfig = type === 'notes' ? { content: '' } : 
+                          type === 'weather' ? { city: '' } : // 자동 감지 유도
+                          {}; // Clock은 별도 config 불필요
 
     try {
       const response = await api.post('/api/widgets', { //
         type: type, //
         config: defaultConfig, //
-        layout: newLayoutItemBase // DB에는 기본 레이아웃(lg 기준) 저장
+        layout: newLayoutItemBase // DB에는 'lg' 기준 레이아웃 저장
       });
-      const addedWidget = response.data; // 서버는 전체 위젯 객체 (ID 포함된 layout 포함) 반환 가정
+      const addedWidgetData = response.data; // 서버는 id 포함된 widget 객체 반환 가정
       
-      // 서버에서 반환된 layout으로 설정 (ID가 포함되어 있을 것이므로)
-      const finalLayoutItem = { ...addedWidget.layout, i: addedWidget.id };
+      // 서버로부터 받은 layout (id 포함) 사용, 없으면 newLayoutItemBase 사용
+      const finalWidget = {
+        ...addedWidgetData,
+        id: addedWidgetData.id.toString(),
+        layout: { ...(addedWidgetData.layout || newLayoutItemBase), i: addedWidgetData.id.toString() }
+      };
 
-
-      setWidgets(prev => [...prev, { ...addedWidget, layout: finalLayoutItem }]); //
+      setWidgets(prev => [...prev, finalWidget]); //
       
-      // 모든 breakpoint에 새 위젯 레이아웃 추가
       setLayouts(prevLayouts => { //
         const newLayoutsState = { ...prevLayouts };
-        Object.keys(newLayoutsState.cols || {lg:12}).forEach(bp => { // newLayoutsState.cols가 존재하면 사용
-            const bpCols = (newLayoutsState.cols && newLayoutsState.cols[bp]) ? newLayoutsState.cols[bp] : lgCols;
-            newLayoutsState[bp] = [
-                ...(newLayoutsState[bp] || []),
-                {
-                    ...finalLayoutItem,
-                    // breakpoint별로 w, x 등을 다르게 설정할 수 있지만, 여기서는 일단 동일하게 추가
-                    w: type === 'weather' ? Math.min(3, bpCols) : Math.min(4, bpCols),
-                    x: ((newLayoutsState[bp] || []).filter(item => item.y === newY).length * (type === 'weather' ? 3 : 4)) % bpCols,
-                }
-            ];
+        Object.keys(RGL_BREAKPOINTS).forEach(bp => {
+          const bpCols = RGL_COLS[bp] || 12;
+          newLayoutsState[bp] = [
+            ...(newLayoutsState[bp] || []),
+            {
+              ...finalWidget.layout, // 서버에서 받은 레이아웃 기준으로
+              // 필요시 breakpoint 별 w, x 조정 (여기서는 일단 동일하게)
+              w: defaultWidths[type] ? Math.min(defaultWidths[type], bpCols) : Math.min(3, bpCols),
+              x: ((newLayoutsState[bp] || []).filter(item => item.y === 0).reduce((acc, item) => acc + item.w, 0) % bpCols) || 0,
+            }
+          ];
         });
         return newLayoutsState; //
       });
@@ -193,19 +179,19 @@ export default function DashboardPage() {
     }
   };
 
-  // 위젯 삭제 함수
-  const deleteWidget = async (widgetId) => { //
+  const deleteWidget = async (widgetIdToDelete) => { //
+    const idStr = widgetIdToDelete.toString();
     try {
-      await api.delete(`/api/widgets/${widgetId}`); //
-      setWidgets(prev => prev.filter(w => w.id !== widgetId)); //
+      await api.delete(`/api/widgets/${idStr}`); //
+      setWidgets(prev => prev.filter(w => w.id.toString() !== idStr)); //
+      
       setLayouts(prevLayouts => { //
-        const newLayouts = {}; //
-        for (const breakpoint in prevLayouts) { //
-          if (Array.isArray(prevLayouts[breakpoint])) { // cols 같은 속성 제외
-             newLayouts[breakpoint] = prevLayouts[breakpoint].filter(item => item.i !== widgetId); //
-          } else {
-             newLayouts[breakpoint] = prevLayouts[breakpoint]; // cols 같은 속성은 그대로 유지
+        const newLayouts = { ...prevLayouts }; //
+        for (const breakpoint in newLayouts) { //
+          if (Array.isArray(newLayouts[breakpoint])) {
+            newLayouts[breakpoint] = newLayouts[breakpoint].filter(item => item.i.toString() !== idStr); //
           }
+          // cols 등 다른 속성은 그대로 유지
         }
         return newLayouts; //
       });
@@ -215,12 +201,11 @@ export default function DashboardPage() {
     }
   };
 
-  // 위젯 설정 업데이트 함수 (예: 노트 내용, 날씨 도시)
   const updateWidgetConfig = async (widgetId, newConfig) => { //
     try {
-      const response = await api.put(`/api/widgets/${widgetId}`, { config: newConfig }); //
+      const response = await api.put(`/api/widgets/${widgetId.toString()}`, { config: newConfig }); //
       setWidgets(prev => //
-        prev.map(w => (w.id === widgetId ? { ...w, config: response.data.config } : w)) //
+        prev.map(w => (w.id.toString() === widgetId.toString() ? { ...w, config: response.data.config } : w)) //
       );
     } catch (err) {
       console.error("Failed to update widget config:", err); //
@@ -255,6 +240,12 @@ export default function DashboardPage() {
           </ListItemButton>
         </ListItem>
         <ListItem disablePadding>
+          <ListItemButton onClick={() => addWidget('clock')}>
+            <ListItemIcon><AccessTimeIcon /></ListItemIcon>
+            <ListItemText primary="Add Clock" />
+          </ListItemButton>
+        </ListItem>
+        <ListItem disablePadding>
           <ListItemButton onClick={logout}>
             <ListItemIcon><LogoutIcon /></ListItemIcon>
             <ListItemText primary="Logout" />
@@ -272,60 +263,27 @@ export default function DashboardPage() {
           justifyContent: 'space-between', 
           alignItems: 'center', 
           mb: 2, 
-          p: { xs: 1, sm: 1.5 }, // 반응형 패딩
+          p: { xs: 1, sm: 1.5 },
           backgroundColor: 'action.hover', 
           borderRadius: 1 
       }}>
-        <Typography variant={isDesktop ? "h5" : "h6"} component="h1"> {/* 화면 크기에 따라 글자 크기 조절 */}
+        <Typography variant={isDesktop ? "h5" : "h6"} component="h1">
           My Dashboard
         </Typography>
         
         {isDesktop ? (
           <Box>
-            <Button
-              startIcon={<AddIcon />}
-              variant="contained"
-              onClick={() => addWidget('notes')}
-              sx={{ mr: 1 }}
-              size="small"
-            >
-              Add Notes
-            </Button>
-            <Button
-              startIcon={<AddIcon />}
-              variant="contained"
-              color="secondary"
-              onClick={() => addWidget('weather')}
-              sx={{ mr: 1 }}
-              size="small"
-            >
-              Add Weather
-            </Button>
-            <Button variant="outlined" onClick={logout} size="small">
-              Logout
-            </Button>
+            <Button startIcon={<AddIcon />} variant="contained" onClick={() => addWidget('notes')} sx={{ mr: 1 }} size="small" > Add Notes </Button>
+            <Button startIcon={<AddIcon />} variant="contained" color="secondary" onClick={() => addWidget('weather')} sx={{ mr: 1 }} size="small" > Add Weather </Button>
+            <Button startIcon={<AccessTimeIcon />} variant="contained" color="info" onClick={() => addWidget('clock')} sx={{ mr: 1 }} size="small"> Add Clock </Button>
+            <Button variant="outlined" onClick={logout} size="small"> Logout </Button>
           </Box>
         ) : (
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="end"
-            onClick={handleDrawerToggle}
-          >
-            <MenuIcon />
-          </IconButton>
+          <IconButton color="inherit" aria-label="open drawer" edge="end" onClick={handleDrawerToggle} > <MenuIcon /> </IconButton>
         )}
       </Box>
 
-      <Drawer
-        anchor="right"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{
-          keepMounted: true, // Better open performance on mobile.
-        }}
-        sx={{ display: { xs: 'block', sm: 'none' } }}
-      >
+      <Drawer anchor="right" open={mobileOpen} onClose={handleDrawerToggle} ModalProps={{ keepMounted: true }} sx={{ display: { xs: 'block', sm: 'none' } }} >
         {drawerItems}
       </Drawer>
 
@@ -333,8 +291,8 @@ export default function DashboardPage() {
 
       <ResponsiveGridLayout
         layouts={layouts} //
-        breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }} //
-        cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }} //
+        breakpoints={RGL_BREAKPOINTS} //
+        cols={RGL_COLS} //
         rowHeight={30} //
         margin={[10, 10]} //
         containerPadding={[10, 10]} //
@@ -342,25 +300,35 @@ export default function DashboardPage() {
         isDraggable //
         isResizable //
         draggableHandle=".widget-drag-handle" //
+        // compactType={null} // 레이아웃 깨짐 현상 완화를 위해 시도해볼 수 있는 옵션
+        // preventCollision={true} // 충돌 방지 옵션
       >
-        {widgets.map((widget) => ( //
-          <div key={widget.id} data-grid={widget.layout || {x:0,y:0,w:1,h:1}} className="bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-200 dark:border-gray-700"> {/* widget.layout이 없을 경우 대비 */}
-            <WidgetWrapper widget={widget} onDelete={deleteWidget}>
-              {widget.type === 'notes' && ( //
-                <NotesWidget
-                  config={widget.config} //
-                  onSave={(newContent) => updateWidgetConfig(widget.id, { content: newContent })} //
-                />
-              )}
-              {widget.type === 'weather' && ( //
-                <WeatherWidget
-                  initialCity={widget.config?.city} // 빈 문자열 전달 가능
-                  onCityChange={(newCity) => updateWidgetConfig(widget.id, { city: newCity })} //
-                />
-              )}
-            </WidgetWrapper>
-          </div>
-        ))}
+        {widgets.map((widget) => {
+          // 레이아웃 객체에서 해당 위젯의 레이아웃 정보를 찾거나 기본값 사용
+          // 현재 활성 breakpoint를 알아내서 해당 레이아웃을 적용하는 것이 더 정확할 수 있으나,
+          // RGL이 layouts prop을 통해 이를 관리하므로, widget.layout은 lg 기준으로 유지.
+          const itemLayout = widget.layout || {
+            x: 0, y: 0,
+            w: (widget.type === 'clock' ? 2 : (widget.type === 'weather' ? 3 : 4)),
+            h: (widget.type === 'clock' ? 1 : (widget.type === 'weather' ? 2 : 3)),
+            i: widget.id.toString()
+          };
+          return (
+            <div key={widget.id.toString()} data-grid={itemLayout} className="bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-200 dark:border-gray-700"> {/* */}
+              <WidgetWrapper widget={widget} onDelete={deleteWidget}>
+                {widget.type === 'notes' && ( //
+                  <NotesWidget config={widget.config} onSave={(newContent) => updateWidgetConfig(widget.id, { content: newContent })} /> //
+                )}
+                {widget.type === 'weather' && ( //
+                  <WeatherWidget initialCity={widget.config?.city} onCityChange={(newCity) => updateWidgetConfig(widget.id, { city: newCity })} /> //
+                )}
+                {widget.type === 'clock' && (
+                  <ClockWidget />
+                )}
+              </WidgetWrapper>
+            </div>
+          );
+        })}
       </ResponsiveGridLayout>
     </Container>
   );
